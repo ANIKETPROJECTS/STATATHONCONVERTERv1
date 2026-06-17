@@ -29,10 +29,10 @@ export function DataPreviewTable({ profile }: Props) {
         <table className="w-full text-xs">
           <thead className="bg-muted/40 sticky top-0">
             <tr>
-              <th className="px-3 py-2.5 text-left font-medium text-muted-foreground border-b border-border w-10 text-center">#</th>
+              <th className="px-3 py-2.5 text-center font-medium text-muted-foreground border-b border-border w-10">#</th>
               {profile.columns.map((col) => (
                 <th
-                  key={col.index}
+                  key={col.srlNo}
                   className="px-3 py-2.5 text-left font-medium text-foreground border-b border-border whitespace-nowrap"
                 >
                   {col.name}
@@ -50,13 +50,11 @@ export function DataPreviewTable({ profile }: Props) {
                 {profile.columns.map((col) => {
                   const val = row[col.name];
                   return (
-                    <td key={col.index} className="px-3 py-2 font-mono text-foreground max-w-[200px]">
+                    <td key={col.srlNo} className="px-3 py-2 font-mono text-foreground max-w-[200px]">
                       {val === "" || val === null || val === undefined ? (
                         <span className="text-muted-foreground/40 italic">null</span>
                       ) : (
-                        <span className="truncate block" title={val}>
-                          {val}
-                        </span>
+                        <span className="truncate block" title={val}>{val}</span>
                       )}
                     </td>
                   );
@@ -67,7 +65,6 @@ export function DataPreviewTable({ profile }: Props) {
         </table>
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="px-4 py-3 border-t border-border flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
@@ -84,12 +81,11 @@ export function DataPreviewTable({ profile }: Props) {
             {Array.from({ length: totalPages }, (_, i) => i)
               .filter((i) => i === 0 || i === totalPages - 1 || Math.abs(i - page) <= 1)
               .map((i, idx, arr) => (
-                <>
+                <span key={i}>
                   {idx > 0 && arr[idx - 1] !== i - 1 && (
-                    <span key={`ellipsis-${i}`} className="text-muted-foreground px-1">…</span>
+                    <span className="text-muted-foreground px-1">…</span>
                   )}
                   <button
-                    key={i}
                     onClick={() => setPage(i)}
                     className={`w-7 h-7 rounded-md text-xs font-medium transition-colors ${
                       i === page
@@ -99,7 +95,7 @@ export function DataPreviewTable({ profile }: Props) {
                   >
                     {i + 1}
                   </button>
-                </>
+                </span>
               ))}
             <button
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}

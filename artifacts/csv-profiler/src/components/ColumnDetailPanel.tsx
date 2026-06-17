@@ -1,10 +1,10 @@
 import { X, Hash, Type, Calendar, ToggleLeft, Layers } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import type { ColumnProfile } from "@/lib/csv-profiler";
+import type { ColumnLayout } from "@/lib/csv-profiler";
 import { formatNumber } from "@/lib/csv-profiler";
 
 interface Props {
-  column: ColumnProfile;
+  column: ColumnLayout;
   onClose: () => void;
 }
 
@@ -16,13 +16,18 @@ const TYPE_ICONS = {
   mixed: Layers,
 };
 
-const CHART_COLORS = ["#3b82f6", "#6366f1", "#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe", "#ede9fe", "#f5f3ff", "#818cf8", "#93c5fd"];
+const CHART_COLORS = [
+  "#3b82f6","#6366f1","#8b5cf6","#a78bfa","#c4b5fd",
+  "#818cf8","#93c5fd","#60a5fa","#7c3aed","#4f46e5",
+];
 
 function StatRow({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs font-mono font-medium text-foreground">{typeof value === "number" ? value.toLocaleString() : value}</span>
+      <span className="text-xs font-mono font-medium text-foreground">
+        {typeof value === "number" ? value.toLocaleString() : value}
+      </span>
     </div>
   );
 }
@@ -41,7 +46,9 @@ export function ColumnDetailPanel({ column, onClose }: Props) {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground truncate">{column.name}</p>
-            <p className="text-xs text-muted-foreground">Column {column.index + 1} &bull; {column.type}</p>
+            <p className="text-xs text-muted-foreground">
+              Srl. {column.srlNo} &bull; {column.type} &bull; {column.length} bytes
+            </p>
           </div>
         </div>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-2 flex-shrink-0">
@@ -50,15 +57,28 @@ export function ColumnDetailPanel({ column, onClose }: Props) {
       </div>
 
       <div className="overflow-y-auto max-h-[80vh]">
-        {/* Core stats */}
+        {/* Layout info */}
         <div className="p-4 border-b border-border">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Overview</p>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Layout</p>
+          <StatRow label="Field length" value={column.length} />
+          <StatRow label="Byte start" value={column.byteStart} />
+          <StatRow label="Byte end" value={column.byteEnd} />
+          {column.remarks && (
+            <StatRow label="Remarks" value={column.remarks} />
+          )}
+          {column.qSec && <StatRow label="Questionnaire Sec" value={column.qSec} />}
+          {column.qItem && <StatRow label="Questionnaire Item" value={column.qItem} />}
+          {column.qCol && <StatRow label="Questionnaire Col" value={column.qCol} />}
+        </div>
+
+        {/* Data quality */}
+        <div className="p-4 border-b border-border">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Data Quality</p>
           <StatRow label="Total count" value={column.totalCount} />
           <StatRow label="Non-null" value={column.nonNullCount} />
           <StatRow label="Null / missing" value={column.nullCount} />
           <StatRow label="Fill rate" value={`${column.fillRate.toFixed(2)}%`} />
           <StatRow label="Unique values" value={column.uniqueCount} />
-          <StatRow label="Unique rate" value={`${column.uniqueRate.toFixed(2)}%`} />
         </div>
 
         {/* Numeric stats */}
@@ -69,18 +89,6 @@ export function ColumnDetailPanel({ column, onClose }: Props) {
             <StatRow label="Maximum" value={formatNumber(column.max!, 4)} />
             <StatRow label="Mean" value={formatNumber(column.mean!, 4)} />
             <StatRow label="Median" value={formatNumber(column.median!, 4)} />
-            <StatRow label="Std deviation" value={formatNumber(column.stdDev!, 4)} />
-            <StatRow label="Range" value={formatNumber(column.max! - column.min, 4)} />
-          </div>
-        )}
-
-        {/* Text stats */}
-        {column.type === "text" && column.minLength !== undefined && (
-          <div className="p-4 border-b border-border">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">String Length</p>
-            <StatRow label="Min length" value={column.minLength} />
-            <StatRow label="Max length" value={column.maxLength!} />
-            <StatRow label="Avg length" value={column.avgLength!.toFixed(1)} />
           </div>
         )}
 
@@ -90,7 +98,7 @@ export function ColumnDetailPanel({ column, onClose }: Props) {
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
               Top Values ({Math.min(10, column.uniqueCount)} of {column.uniqueCount})
             </p>
-            {column.uniqueCount <= 30 ? (
+            {column.uniqueCount <= 20 ? (
               <ResponsiveContainer width="100%" height={Math.min(chartData.length * 28, 260)}>
                 <BarChart
                   data={chartData}
@@ -103,11 +111,13 @@ export function ColumnDetailPanel({ column, onClose }: Props) {
                     dataKey="value"
                     width={80}
                     tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                    tickFormatter={(v) => String(v).length > 10 ? String(v).slice(0, 10) + "…" : String(v)}
+                    tickFormatter={(v) =>
+                      String(v).length > 12 ? String(v).slice(0, 12) + "…" : String(v)
+                    }
                   />
                   <Tooltip
                     formatter={(v: number, _: string, props: { payload?: { value: string; percent: number } }) => [
-                      `${v} (${props.payload?.percent?.toFixed(1)}%)`,
+                      `${v.toLocaleString()} (${props.payload?.percent?.toFixed(1)}%)`,
                       "Count",
                     ]}
                     contentStyle={{
@@ -125,11 +135,14 @@ export function ColumnDetailPanel({ column, onClose }: Props) {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {chartData.map((item, i) => (
                   <div key={i} className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
+                      <div
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
+                      />
                       <span className="text-xs font-mono text-foreground truncate">{item.value}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -142,7 +155,9 @@ export function ColumnDetailPanel({ column, onClose }: Props) {
                           }}
                         />
                       </div>
-                      <span className="text-xs text-muted-foreground w-10 text-right">{item.count}</span>
+                      <span className="text-xs text-muted-foreground w-12 text-right">
+                        {item.count.toLocaleString()}
+                      </span>
                     </div>
                   </div>
                 ))}

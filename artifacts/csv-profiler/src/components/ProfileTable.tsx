@@ -1,89 +1,79 @@
 import { useState } from "react";
-import { ChevronUp, ChevronDown, Search } from "lucide-react";
-import type { DataProfile, ColumnProfile } from "@/lib/csv-profiler";
-import { formatNumber } from "@/lib/csv-profiler";
-
-type SortKey = "index" | "name" | "type" | "fillRate" | "uniqueCount" | "totalCount";
+import { Search, ChevronUp, ChevronDown, Edit3, Check, X } from "lucide-react";
+import type { DataProfile, ColumnLayout } from "@/lib/csv-profiler";
 
 interface Props {
   profile: DataProfile;
-  selectedColumn: ColumnProfile | null;
-  onSelectColumn: (col: ColumnProfile | null) => void;
+  selectedColumn: ColumnLayout | null;
+  onSelectColumn: (col: ColumnLayout | null) => void;
+  onUpdateQRef: (colIndex: number, sec: string, item: string, col: string, remarks: string) => void;
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  numeric: "bg-blue-100 text-blue-700",
-  text: "bg-violet-100 text-violet-700",
-  boolean: "bg-emerald-100 text-emerald-700",
-  date: "bg-amber-100 text-amber-700",
-  mixed: "bg-gray-100 text-gray-600",
-};
+function EditableCell({
+  value,
+  onChange,
+  placeholder = "",
+  className = "",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
 
-function FillBar({ rate }: { rate: number }) {
-  const color = rate >= 95 ? "bg-emerald-500" : rate >= 80 ? "bg-amber-400" : "bg-red-400";
-  return (
-    <div className="flex items-center gap-2 min-w-[100px]">
-      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${rate}%` }} />
+  const commit = () => {
+    onChange(draft);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+          className="w-full min-w-0 border border-primary/50 rounded px-1.5 py-0.5 text-xs bg-background focus:outline-none"
+          style={{ maxWidth: 120 }}
+        />
+        <button onClick={commit} className="text-emerald-600 hover:text-emerald-700 flex-shrink-0">
+          <Check className="w-3 h-3" />
+        </button>
+        <button onClick={() => setEditing(false)} className="text-muted-foreground hover:text-foreground flex-shrink-0">
+          <X className="w-3 h-3" />
+        </button>
       </div>
-      <span className="text-xs text-muted-foreground w-10 text-right">{rate.toFixed(1)}%</span>
+    );
+  }
+
+  return (
+    <div
+      className={`group flex items-center gap-1 cursor-pointer ${className}`}
+      onClick={(e) => { e.stopPropagation(); setEditing(true); setDraft(value); }}
+    >
+      <span className={value ? "text-foreground" : "text-muted-foreground/40 italic"}>
+        {value || placeholder}
+      </span>
+      <Edit3 className="w-2.5 h-2.5 opacity-0 group-hover:opacity-40 flex-shrink-0" />
     </div>
   );
 }
 
-export function ProfileTable({ profile, selectedColumn, onSelectColumn }: Props) {
-  const [sortKey, setSortKey] = useState<SortKey>("index");
-  const [sortAsc, setSortAsc] = useState(true);
+export function ProfileTable({ profile, selectedColumn, onSelectColumn, onUpdateQRef }: Props) {
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
 
-  const types = Array.from(new Set(profile.columns.map((c) => c.type)));
-
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) setSortAsc(!sortAsc);
-    else { setSortKey(key); setSortAsc(true); }
-  };
-
-  const filtered = profile.columns
-    .filter((c) => {
-      const matchSearch = c.name.toLowerCase().includes(search.toLowerCase());
-      const matchType = typeFilter === "all" || c.type === typeFilter;
-      return matchSearch && matchType;
-    })
-    .sort((a, b) => {
-      let diff = 0;
-      if (sortKey === "index") diff = a.index - b.index;
-      else if (sortKey === "name") diff = a.name.localeCompare(b.name);
-      else if (sortKey === "type") diff = a.type.localeCompare(b.type);
-      else if (sortKey === "fillRate") diff = a.fillRate - b.fillRate;
-      else if (sortKey === "uniqueCount") diff = a.uniqueCount - b.uniqueCount;
-      else if (sortKey === "totalCount") diff = a.totalCount - b.totalCount;
-      return sortAsc ? diff : -diff;
-    });
-
-  const SortIcon = ({ k }: { k: SortKey }) => (
-    sortKey === k
-      ? sortAsc ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-      : <ChevronDown className="w-3 h-3 opacity-30" />
-  );
-
-  const Th = ({ k, children, className = "" }: { k: SortKey; children: React.ReactNode; className?: string }) => (
-    <th
-      className={`px-3 py-2.5 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none ${className}`}
-      onClick={() => toggleSort(k)}
-    >
-      <div className="flex items-center gap-1">
-        {children}
-        <SortIcon k={k} />
-      </div>
-    </th>
+  const filtered = profile.columns.filter((c) =>
+    c.name.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       {/* Toolbar */}
       <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[160px]">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <input
             type="text"
@@ -93,97 +83,162 @@ export function ProfileTable({ profile, selectedColumn, onSelectColumn }: Props)
             className="w-full pl-8 pr-3 py-1.5 text-sm bg-muted rounded-lg border border-transparent focus:border-ring focus:outline-none"
           />
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <button
-            onClick={() => setTypeFilter("all")}
-            className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
-              typeFilter === "all" ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            All
-          </button>
-          {types.map((t) => (
-            <button
-              key={t}
-              onClick={() => setTypeFilter(t)}
-              className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
-                typeFilter === t ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-        <span className="text-xs text-muted-foreground ml-auto">{filtered.length} of {profile.totalColumns} columns</span>
+        <span className="text-xs text-muted-foreground">
+          {filtered.length} of {profile.totalColumns} columns &bull; Record length: <strong>{profile.totalRecordLength}</strong> bytes
+        </span>
+        <span className="text-xs text-muted-foreground ml-auto italic">
+          Click a row for details &bull; Click Sec/Item/Col/Remarks to edit
+        </span>
       </div>
 
-      {/* Table */}
+      {/* Table — matching the Layout format exactly */}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 border-b border-border">
-            <tr>
-              <Th k="index" className="w-12">#</Th>
-              <Th k="name">Column Name</Th>
-              <Th k="type" className="w-24">Type</Th>
-              <Th k="totalCount" className="w-28">Count</Th>
-              <Th k="fillRate" className="w-40">Fill Rate</Th>
-              <Th k="uniqueCount" className="w-28">Unique</Th>
-              <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground w-48">Sample Values</th>
-              <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground w-48">Stats</th>
+        <table className="w-full text-sm border-collapse">
+          {/* Multi-row header like the Excel layout */}
+          <thead>
+            {/* Row 1: group headers */}
+            <tr className="bg-muted/60 border-b border-border">
+              <th className="px-3 py-2 text-xs font-semibold text-foreground text-center border-r border-border" rowSpan={2}>
+                Srl. no.
+              </th>
+              <th className="px-3 py-2 text-xs font-semibold text-foreground border-r border-border" rowSpan={2}>
+                Item
+              </th>
+              <th className="px-3 py-2 text-xs font-semibold text-foreground text-center border-r border-border" colSpan={3}>
+                Questionnaire reference
+              </th>
+              <th className="px-3 py-2 text-xs font-semibold text-foreground text-center border-r border-border" rowSpan={2}>
+                Length
+              </th>
+              <th className="px-3 py-2 text-xs font-semibold text-foreground text-center border-r border-border" colSpan={2}>
+                Byte position
+              </th>
+              <th className="px-3 py-2 text-xs font-semibold text-foreground border-r border-border" rowSpan={2}>
+                Remarks
+              </th>
+              <th className="px-3 py-2 text-xs font-semibold text-muted-foreground text-center" rowSpan={2}>
+                Type
+              </th>
+            </tr>
+            {/* Row 2: sub-headers */}
+            <tr className="bg-muted/40 border-b-2 border-border">
+              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-12">
+                Sec
+              </th>
+              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-16">
+                Item
+              </th>
+              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-12">
+                Col.
+              </th>
+              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-14">
+                Start
+              </th>
+              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-14">
+                End
+              </th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((col) => {
-              const isSelected = selectedColumn?.index === col.index;
+              const isSelected = selectedColumn?.srlNo === col.srlNo;
               return (
                 <tr
-                  key={col.index}
+                  key={col.srlNo}
                   onClick={() => onSelectColumn(isSelected ? null : col)}
                   className={`border-b border-border/60 cursor-pointer transition-colors ${
                     isSelected
-                      ? "bg-primary/5 border-l-2 border-l-primary"
+                      ? "bg-primary/8 border-l-2 border-l-primary"
                       : "hover:bg-accent/30"
                   }`}
                 >
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">{col.index + 1}</td>
-                  <td className="px-3 py-2.5">
-                    <span className="font-medium text-foreground">{col.name}</span>
+                  {/* Srl. no. */}
+                  <td className="px-3 py-2 text-xs text-center text-muted-foreground font-mono border-r border-border/40">
+                    {col.srlNo}
                   </td>
-                  <td className="px-3 py-2.5">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[col.type] ?? "bg-gray-100 text-gray-600"}`}>
+
+                  {/* Item / Column Name */}
+                  <td className="px-3 py-2 font-medium text-foreground border-r border-border/40 whitespace-nowrap">
+                    {col.name}
+                  </td>
+
+                  {/* Sec */}
+                  <td
+                    className="px-3 py-2 text-xs text-center border-r border-border/40"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <EditableCell
+                      value={col.qSec}
+                      onChange={(v) => onUpdateQRef(col.srlNo - 1, v, col.qItem, col.qCol, col.remarks)}
+                      placeholder="—"
+                      className="justify-center"
+                    />
+                  </td>
+
+                  {/* Item ref */}
+                  <td
+                    className="px-3 py-2 text-xs text-center border-r border-border/40"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <EditableCell
+                      value={col.qItem}
+                      onChange={(v) => onUpdateQRef(col.srlNo - 1, col.qSec, v, col.qCol, col.remarks)}
+                      placeholder="—"
+                      className="justify-center"
+                    />
+                  </td>
+
+                  {/* Col ref */}
+                  <td
+                    className="px-3 py-2 text-xs text-center border-r border-border/40"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <EditableCell
+                      value={col.qCol}
+                      onChange={(v) => onUpdateQRef(col.srlNo - 1, col.qSec, col.qItem, v, col.remarks)}
+                      placeholder="—"
+                      className="justify-center"
+                    />
+                  </td>
+
+                  {/* Length */}
+                  <td className="px-3 py-2 text-xs text-center font-mono text-foreground font-semibold border-r border-border/40">
+                    {col.length}
+                  </td>
+
+                  {/* Byte Start */}
+                  <td className="px-3 py-2 text-xs text-center font-mono text-muted-foreground border-r border-border/40">
+                    {col.byteStart}
+                  </td>
+
+                  {/* Byte End */}
+                  <td className="px-3 py-2 text-xs text-center font-mono text-muted-foreground border-r border-border/40">
+                    {col.byteEnd}
+                  </td>
+
+                  {/* Remarks */}
+                  <td
+                    className="px-3 py-2 text-xs text-muted-foreground italic border-r border-border/40 max-w-[200px]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <EditableCell
+                      value={col.remarks}
+                      onChange={(v) => onUpdateQRef(col.srlNo - 1, col.qSec, col.qItem, col.qCol, v)}
+                      placeholder="—"
+                    />
+                  </td>
+
+                  {/* Type badge */}
+                  <td className="px-3 py-2 text-center">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      col.type === "numeric" ? "bg-blue-100 text-blue-700" :
+                      col.type === "text" ? "bg-violet-100 text-violet-700" :
+                      col.type === "date" ? "bg-amber-100 text-amber-700" :
+                      col.type === "boolean" ? "bg-emerald-100 text-emerald-700" :
+                      "bg-gray-100 text-gray-600"
+                    }`}>
                       {col.type}
                     </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">
-                    {col.nonNullCount.toLocaleString()}
-                    {col.nullCount > 0 && (
-                      <span className="text-red-400 ml-1">(-{col.nullCount})</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <FillBar rate={col.fillRate} />
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">
-                    {col.uniqueCount.toLocaleString()}
-                    <span className="text-muted-foreground/60 ml-1">({col.uniqueRate.toFixed(0)}%)</span>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex flex-wrap gap-1">
-                      {col.sampleValues.slice(0, 3).map((v, i) => (
-                        <span key={i} className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono max-w-[80px] truncate">
-                          {v || <span className="italic text-muted-foreground">empty</span>}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">
-                    {col.type === "numeric" && col.min !== undefined ? (
-                      <span>{formatNumber(col.min)} – {formatNumber(col.max!)}</span>
-                    ) : col.type === "text" && col.minLength !== undefined ? (
-                      <span>len {col.minLength}–{col.maxLength}</span>
-                    ) : (
-                      <span className="text-muted-foreground/40">—</span>
-                    )}
                   </td>
                 </tr>
               );
@@ -191,7 +246,7 @@ export function ProfileTable({ profile, selectedColumn, onSelectColumn }: Props)
           </tbody>
         </table>
         {filtered.length === 0 && (
-          <div className="py-12 text-center text-sm text-muted-foreground">No columns match your filters</div>
+          <div className="py-12 text-center text-sm text-muted-foreground">No columns match your search</div>
         )}
       </div>
     </div>

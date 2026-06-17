@@ -7,7 +7,7 @@ interface Props {
 export function SummaryCards({ profile }: Props) {
   const numericCols = profile.columns.filter((c) => c.type === "numeric").length;
   const textCols = profile.columns.filter((c) => c.type === "text").length;
-  const otherCols = profile.columns.filter((c) => c.type !== "numeric" && c.type !== "text").length;
+  const otherCols = profile.columns.length - numericCols - textCols;
   const avgFillRate =
     profile.columns.reduce((acc, c) => acc + c.fillRate, 0) / profile.columns.length;
   const colsWithNulls = profile.columns.filter((c) => c.nullCount > 0).length;
@@ -16,7 +16,7 @@ export function SummaryCards({ profile }: Props) {
     {
       label: "Total Rows",
       value: profile.totalRows.toLocaleString(),
-      sub: "records",
+      sub: "records in file",
       color: "bg-blue-50 text-blue-700 border-blue-100",
       dot: "bg-blue-500",
     },
@@ -28,31 +28,28 @@ export function SummaryCards({ profile }: Props) {
       dot: "bg-violet-500",
     },
     {
+      label: "Record Length",
+      value: `${profile.totalRecordLength}`,
+      sub: "total bytes per record",
+      color: "bg-amber-50 text-amber-700 border-amber-100",
+      dot: "bg-amber-500",
+    },
+    {
       label: "Avg Fill Rate",
       value: `${avgFillRate.toFixed(1)}%`,
       sub: colsWithNulls > 0 ? `${colsWithNulls} cols have missing values` : "No missing values",
       color:
         avgFillRate > 95
           ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-          : "bg-amber-50 text-amber-700 border-amber-100",
-      dot: avgFillRate > 95 ? "bg-emerald-500" : "bg-amber-500",
-    },
-    {
-      label: "Unique Values",
-      value: profile.columns.reduce((a, c) => a + c.uniqueCount, 0).toLocaleString(),
-      sub: "across all columns",
-      color: "bg-rose-50 text-rose-700 border-rose-100",
-      dot: "bg-rose-500",
+          : "bg-rose-50 text-rose-700 border-rose-100",
+      dot: avgFillRate > 95 ? "bg-emerald-500" : "bg-rose-500",
     },
   ];
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {cards.map((card) => (
-        <div
-          key={card.label}
-          className={`rounded-xl border px-4 py-3.5 ${card.color}`}
-        >
+        <div key={card.label} className={`rounded-xl border px-4 py-3.5 ${card.color}`}>
           <div className="flex items-center gap-2 mb-1">
             <div className={`w-2 h-2 rounded-full ${card.dot}`} />
             <span className="text-xs font-medium opacity-70">{card.label}</span>

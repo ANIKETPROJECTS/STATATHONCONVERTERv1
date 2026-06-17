@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import Papa from "papaparse";
-import { Upload, FileText, X, ChevronDown, ChevronUp, BarChart2, Table2, Info } from "lucide-react";
-import { profileData, type DataProfile, type ColumnProfile, formatNumber, formatFileSize } from "@/lib/csv-profiler";
+import { Upload, FileText, X, BarChart2, Table2, Info } from "lucide-react";
+import { profileData, type DataProfile, type ColumnLayout, formatFileSize } from "@/lib/csv-profiler";
 import { ColumnDetailPanel } from "@/components/ColumnDetailPanel";
 import { DataPreviewTable } from "@/components/DataPreviewTable";
 import { SummaryCards } from "@/components/SummaryCards";
@@ -13,13 +13,14 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<DataProfile | null>(null);
-  const [selectedColumn, setSelectedColumn] = useState<ColumnProfile | null>(null);
+  const [selectedColumn, setSelectedColumn] = useState<ColumnLayout | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("profile");
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = useCallback((file: File) => {
-    if (!file.name.endsWith(".csv") && file.type !== "text/csv" && !file.name.endsWith(".tsv")) {
+    const name = file.name.toLowerCase();
+    if (!name.endsWith(".csv") && !name.endsWith(".tsv") && file.type !== "text/csv") {
       setError("Please upload a CSV or TSV file.");
       return;
     }
@@ -28,7 +29,7 @@ export default function Home() {
     setProfile(null);
     setSelectedColumn(null);
 
-    const delimiter = file.name.endsWith(".tsv") ? "\t" : undefined;
+    const delimiter = name.endsWith(".tsv") ? "\t" : undefined;
 
     Papa.parse(file, {
       header: true,
@@ -69,6 +70,24 @@ export default function Home() {
     setSelectedColumn(null);
     setError(null);
     setViewMode("profile");
+  };
+
+  const handleUpdateQRef = (
+    colIndex: number,
+    sec: string,
+    item: string,
+    col: string,
+    remarks: string
+  ) => {
+    if (!profile) return;
+    const updated = { ...profile };
+    updated.columns = profile.columns.map((c, i) =>
+      i === colIndex ? { ...c, qSec: sec, qItem: item, qCol: col, remarks } : c
+    );
+    setProfile(updated);
+    if (selectedColumn && selectedColumn.srlNo === colIndex + 1) {
+      setSelectedColumn({ ...selectedColumn, qSec: sec, qItem: item, qCol: col, remarks });
+    }
   };
 
   return (
@@ -142,9 +161,9 @@ export default function Home() {
               <p className="text-xs text-muted-foreground mb-3 font-medium uppercase tracking-wide">What this tool generates</p>
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { icon: "📊", label: "Column profiles", desc: "Type, fill rate, unique count" },
-                  { icon: "📈", label: "Statistics", desc: "Min, max, mean, median" },
-                  { icon: "🔍", label: "Value analysis", desc: "Top frequencies, samples" },
+                  { icon: "📋", label: "Layout table", desc: "Srl. no., Item, Length, Byte positions" },
+                  { icon: "📐", label: "Field widths", desc: "Auto-computed from actual data" },
+                  { icon: "💬", label: "Remarks", desc: "Auto-inferred from value patterns" },
                 ].map((item) => (
                   <div key={item.label} className="bg-card border border-border rounded-xl p-3 text-left">
                     <div className="text-lg mb-1">{item.icon}</div>
@@ -160,7 +179,7 @@ export default function Home() {
         {/* Loading */}
         {isLoading && (
           <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-            <div className="w-12 h-12 border-3 border-primary/20 border-t-primary rounded-full animate-spin" />
+            <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
             <p className="text-sm text-muted-foreground">Profiling your dataset...</p>
           </div>
         )}
@@ -178,7 +197,7 @@ export default function Home() {
                   <p className="text-sm font-semibold text-foreground">{profile.fileName}</p>
                   <p className="text-xs text-muted-foreground">
                     {profile.totalRows.toLocaleString()} rows &times; {profile.totalColumns} columns
-                    {profile.fileSize ? ` &bull; ${formatFileSize(profile.fileSize)}` : ""}
+                    {profile.fileSize ? ` · ${formatFileSize(profile.fileSize)}` : ""}
                   </p>
                 </div>
               </div>
@@ -192,7 +211,7 @@ export default function Home() {
                   }`}
                 >
                   <Info className="w-3.5 h-3.5" />
-                  Column Profile
+                  Layout Table
                 </button>
                 <button
                   onClick={() => setViewMode("preview")}
@@ -212,11 +231,12 @@ export default function Home() {
             <SummaryCards profile={profile} />
 
             {viewMode === "profile" && (
-              <div className={`grid gap-6 ${selectedColumn ? "grid-cols-[1fr_360px]" : "grid-cols-1"}`}>
+              <div className={`grid gap-6 ${selectedColumn ? "grid-cols-[1fr_340px]" : "grid-cols-1"}`}>
                 <ProfileTable
                   profile={profile}
                   selectedColumn={selectedColumn}
                   onSelectColumn={setSelectedColumn}
+                  onUpdateQRef={handleUpdateQRef}
                 />
                 {selectedColumn && (
                   <ColumnDetailPanel
