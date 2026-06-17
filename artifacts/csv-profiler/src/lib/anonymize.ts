@@ -1,10 +1,12 @@
-// AES-256-GCM Format-Preserving Encryption/Decryption — Browser Simulation
+// AES-256-GCM Format-Preserving Encryption/Decryption — Streaming Browser Simulation
 // Spec: AES256_GCM_ENCRYPTION.md (xorshift128+ keystream + FPE layer)
+// Streaming design: never builds a full row-object array — processes line-by-line
+// in CHUNK-sized batches and accumulates output as Blob-array segments.
 
 // ── §9 — xorshift128+ PRNG ────────────────────────────────────────────────────
 function makeKeystream(seed: number) {
-  let a = ((seed ^ 0x9E3779B9) >>> 0) || 1;
-  let b = ((seed ^ 0x6C62272E) >>> 0) || 2;
+  let a = ((seed ^ 0x9e3779b9) >>> 0) || 1;
+  let b = ((seed ^ 0x6c62272e) >>> 0) || 2;
   return () => {
     a ^= a << 13; a = a >>> 0;
     a ^= a >> 17;
@@ -18,7 +20,7 @@ function makeKeystream(seed: number) {
 
 // ── §8.1 — Random key from seed ───────────────────────────────────────────────
 function generateRandomKey(seed: number): string {
-  const rng = makeKeystream((seed ^ 0xDEADBEEF) >>> 0);
+  const rng = makeKeystream((seed ^ 0xdeadbeef) >>> 0);
   const bytes: string[] = [];
   for (let i = 0; i < 32; i++)
     bytes.push(Math.floor(rng() * 256).toString(16).padStart(2, "0"));
@@ -27,7 +29,7 @@ function generateRandomKey(seed: number): string {
 
 // ── §8.2 — PBKDF2-like passphrase key ────────────────────────────────────────
 function deriveKeyFromPassphrase(passphrase: string, iterations: number): string {
-  let h = 0x5A827999;
+  let h = 0x5a827999;
   for (let i = 0; i < passphrase.length; i++)
     h = (Math.imul(h, 31) + passphrase.charCodeAt(i)) >>> 0;
   const rng = makeKeystream(h);
@@ -40,14 +42,14 @@ function deriveKeyFromPassphrase(passphrase: string, iterations: number): string
 
 // ── §11 — Column IV hash (deterministic per key+col) ─────────────────────────
 function hashColIV(keyHex: string, colName: string): number {
-  let h = parseInt(keyHex.slice(0, 8), 16) ^ 0xA5A5A5A5;
+  let h = parseInt(keyHex.slice(0, 8), 16) ^ 0xa5a5a5a5;
   const s = "COL\x00" + colName;
   for (let i = 0; i < s.length; i++)
     h = (Math.imul(h, 1664525) + s.charCodeAt(i) + 1013904223) >>> 0;
   return h;
 }
 
-// ── §12 — Per-cell keystream bytes (AES-GCM simulation) ──────────────────────
+// ── §12 — Per-cell keystream bytes ────────────────────────────────────────────
 function makeCellKsBytes(size: number, keyHex: string, ivSeed: number): Uint8Array {
   const combined = (parseInt(keyHex.slice(0, 8), 16) ^ ivSeed) >>> 0;
   const ksRng = makeKeystream(combined);
@@ -66,7 +68,7 @@ function encryptFPECell(ksBytes: Uint8Array, value: string): string {
     const k = ksBytes[ki++ % ksBytes.length];
     if (code >= 48 && code <= 57) {
       if (isAllNumeric && idx === 0) {
-        const d = code - 49; // 1–9 → 0–8
+        const d = code - 49;
         return String.fromCharCode(49 + ((d + (k % 9) + 9) % 9));
       }
       return String.fromCharCode(48 + ((code - 48 + k) % 10));
@@ -88,7 +90,7 @@ function decryptFPECell(ksBytes: Uint8Array, value: string): string {
     const k = ksBytes[ki++ % ksBytes.length];
     if (code >= 48 && code <= 57) {
       if (isAllNumeric && idx === 0) {
-        const d = code - 49; // 1–9 → 0–8
+        const d = code - 49;
         return String.fromCharCode(49 + ((d - (k % 9) + 9) % 9));
       }
       return String.fromCharCode(48 + ((code - 48 - k + 1000) % 10));
@@ -101,18 +103,36 @@ function decryptFPECell(ksBytes: Uint8Array, value: string): string {
   }).join("");
 }
 
-// ── Key derivation helper ─────────────────────────────────────────────────────
-export function resolveKeyHex(options: AnonymizeOptions): string {
-  if (options.keyMode === "hex") {
-    return (options.keyHex ?? "").toLowerCase().trim();
-  }
-  if (options.keyMode === "pbkdf2" && options.passphrase.trim().length > 0) {
-    return deriveKeyFromPassphrase(options.passphrase, options.pbkdf2Iterations);
-  }
-  return generateRandomKey(options.seed);
+// ── CSV helpers ───────────────────────────────────────────────────────────────
+function csvEscape(val: string): string {
+  if (val.includes(",") || val.includes('"') || val.includes("\n"))
+    return '"' + val.replace(/"/g, '""') + '"';
+  return val;
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+function splitCSVLine(line: string): string[] {
+  const cells: string[] = [];
+  let inQ = false, cur = "";
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (c === "," && !inQ) {
+      cells.push(cur); cur = "";
+    } else cur += c;
+  }
+  cells.push(cur);
+  return cells;
+}
+
+// ── Public types ──────────────────────────────────────────────────────────────
+
+export interface FieldSpec {
+  varName: string;
+  start: number;
+  end: number;
+}
 
 export interface AnonymizeOptions {
   keyMode: "random" | "pbkdf2" | "hex";
@@ -124,141 +144,175 @@ export interface AnonymizeOptions {
 }
 
 export interface AnonymizeResult {
-  rows: Record<string, string>[];
+  blob: Blob;
   keyHex: string;
 }
 
-// ── Encrypt ───────────────────────────────────────────────────────────────────
-export async function anonymizeRows(
-  rows: Record<string, string>[],
-  columns: string[],
+// Resolve key hex from options
+export function resolveKeyHex(options: AnonymizeOptions): string {
+  if (options.keyMode === "hex") return (options.keyHex ?? "").toLowerCase().trim();
+  if (options.keyMode === "pbkdf2" && options.passphrase.trim().length > 0)
+    return deriveKeyFromPassphrase(options.passphrase, options.pbkdf2Iterations);
+  return generateRandomKey(options.seed);
+}
+
+const STREAM_CHUNK = 50_000;
+
+// ── Streaming encrypt: FWF raw text → anonymized CSV Blob ─────────────────────
+// Never builds a full row-object array. Processes STREAM_CHUNK lines at a time.
+export async function encryptFWFToBlob(
+  rawText: string,
+  fields: FieldSpec[],
+  encCols: ReadonlySet<string>,
   options: AnonymizeOptions,
   onProgress: (pct: number) => void
 ): Promise<AnonymizeResult> {
   const keyHex = resolveKeyHex(options);
 
-  const colKsBytes: Record<string, Uint8Array> = {};
+  // Pre-compute per-column keystreams for deterministic mode
+  const colKs: Record<string, Uint8Array> = {};
   if (options.deterministic) {
-    for (const col of columns)
-      colKsBytes[col] = makeCellKsBytes(256, keyHex, hashColIV(keyHex, col));
+    for (const f of fields)
+      if (encCols.has(f.varName))
+        colKs[f.varName] = makeCellKsBytes(256, keyHex, hashColIV(keyHex, f.varName));
   }
 
-  const result: Record<string, string>[] = [];
-  const total = rows.length;
-  const cache = new Map<string, string>();
+  const lines = rawText.split(/\r?\n/);
+  const dataLines: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].length > 0) dataLines.push(lines[i]);
+  }
+  const total = dataLines.length;
+
+  const header = fields.map((f) => csvEscape(f.varName)).join(",");
+  const chunks: string[] = [header + "\n"];
+
+  const detCache = new Map<string, string>();
   let ivCounter = 0;
-  const CHUNK = 5000;
 
-  for (let ri = 0; ri < total; ri++) {
-    const row = { ...rows[ri] };
-    for (const col of columns) {
-      const val = row[col] ?? "";
-      if (!val.trim()) continue;
+  for (let i = 0; i < total; i += STREAM_CHUNK) {
+    const end = Math.min(i + STREAM_CHUNK, total);
+    const rowLines: string[] = [];
 
-      if (options.deterministic) {
-        const cacheKey = col + "\x00" + val;
-        if (cache.has(cacheKey)) {
-          row[col] = cache.get(cacheKey)!;
-        } else {
-          const enc = encryptFPECell(colKsBytes[col], val);
-          cache.set(cacheKey, enc);
-          row[col] = enc;
+    for (let li = i; li < end; li++) {
+      const line = dataLines[li];
+      const csvCells: string[] = [];
+
+      for (const f of fields) {
+        let val = line.padEnd(f.end).substring(f.start - 1, f.end).trim();
+
+        if (encCols.has(f.varName) && val.length > 0) {
+          if (options.deterministic) {
+            const ck = f.varName + "\x00" + val;
+            if (detCache.has(ck)) {
+              val = detCache.get(ck)!;
+            } else {
+              const enc = encryptFPECell(colKs[f.varName], val);
+              detCache.set(ck, enc);
+              val = enc;
+            }
+          } else {
+            ivCounter = (ivCounter + 1) >>> 0;
+            val = encryptFPECell(makeCellKsBytes(val.length + 32, keyHex, ivCounter), val);
+          }
         }
-      } else {
-        ivCounter = (ivCounter + 1) >>> 0;
-        row[col] = encryptFPECell(makeCellKsBytes(val.length + 32, keyHex, ivCounter), val);
+        csvCells.push(csvEscape(val));
       }
+      rowLines.push(csvCells.join(","));
     }
-    result.push(row);
-    if (ri % CHUNK === 0) {
-      onProgress(Math.min(99, Math.round((ri / total) * 100)));
-      await new Promise((r) => setTimeout(r, 0));
-    }
+
+    chunks.push(rowLines.join("\n") + "\n");
+    onProgress(Math.min(99, Math.round((end / total) * 100)));
+    await new Promise((r) => setTimeout(r, 0));
   }
 
   onProgress(100);
-  return { rows: result, keyHex };
+  return { blob: new Blob(chunks, { type: "text/csv;charset=utf-8;" }), keyHex };
 }
 
-// ── Decrypt ───────────────────────────────────────────────────────────────────
-export async function decryptRows(
-  rows: Record<string, string>[],
-  columns: string[],
+// ── Streaming decrypt: CSV text → decrypted CSV Blob ─────────────────────────
+// Never builds a full row-object array.
+export async function decryptCSVToBlob(
+  csvText: string,
+  decCols: ReadonlySet<string>,
   options: AnonymizeOptions,
   onProgress: (pct: number) => void
-): Promise<Record<string, string>[]> {
+): Promise<Blob> {
+  const lines = csvText.split(/\r?\n/);
+
+  // Find first non-empty line as header
+  let headerIdx = 0;
+  while (headerIdx < lines.length && lines[headerIdx].trim() === "") headerIdx++;
+  if (headerIdx >= lines.length) throw new Error("Empty CSV file");
+
+  const headers = splitCSVLine(lines[headerIdx]);
+  if (headers.length === 0) throw new Error("No headers found in CSV");
+
   const keyHex = resolveKeyHex(options);
 
-  const colKsBytes: Record<string, Uint8Array> = {};
+  // Pre-compute per-column keystreams for deterministic mode
+  const colKs: Record<string, Uint8Array> = {};
   if (options.deterministic) {
-    for (const col of columns)
-      colKsBytes[col] = makeCellKsBytes(256, keyHex, hashColIV(keyHex, col));
+    for (const col of decCols)
+      colKs[col] = makeCellKsBytes(256, keyHex, hashColIV(keyHex, col));
   }
 
-  const result: Record<string, string>[] = [];
-  const total = rows.length;
-  const cache = new Map<string, string>();
+  // Collect non-empty data lines (after header)
+  const dataLines: string[] = [];
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    if (lines[i].trim().length > 0) dataLines.push(lines[i]);
+  }
+  const total = dataLines.length;
+
+  const headerLine = headers.map(csvEscape).join(",");
+  const chunks: string[] = [headerLine + "\n"];
+
+  const detCache = new Map<string, string>();
   let ivCounter = 0;
-  const CHUNK = 5000;
 
-  for (let ri = 0; ri < total; ri++) {
-    const row = { ...rows[ri] };
-    for (const col of columns) {
-      const val = row[col] ?? "";
-      if (!val.trim()) continue;
+  for (let i = 0; i < total; i += STREAM_CHUNK) {
+    const end = Math.min(i + STREAM_CHUNK, total);
+    const rowLines: string[] = [];
 
-      if (options.deterministic) {
-        const cacheKey = col + "\x00" + val;
-        if (cache.has(cacheKey)) {
-          row[col] = cache.get(cacheKey)!;
-        } else {
-          const dec = decryptFPECell(colKsBytes[col], val);
-          cache.set(cacheKey, dec);
-          row[col] = dec;
+    for (let li = i; li < end; li++) {
+      const cells = splitCSVLine(dataLines[li]);
+      const outCells: string[] = [];
+
+      for (let ci = 0; ci < headers.length; ci++) {
+        const col = headers[ci];
+        let val = cells[ci] ?? "";
+
+        if (decCols.has(col) && val.length > 0) {
+          if (options.deterministic) {
+            const ck = col + "\x00" + val;
+            if (detCache.has(ck)) {
+              val = detCache.get(ck)!;
+            } else {
+              const dec = decryptFPECell(colKs[col], val);
+              detCache.set(ck, dec);
+              val = dec;
+            }
+          } else {
+            ivCounter = (ivCounter + 1) >>> 0;
+            val = decryptFPECell(makeCellKsBytes(val.length + 32, keyHex, ivCounter), val);
+          }
         }
-      } else {
-        ivCounter = (ivCounter + 1) >>> 0;
-        row[col] = decryptFPECell(makeCellKsBytes(val.length + 32, keyHex, ivCounter), val);
+        outCells.push(csvEscape(val));
       }
+      rowLines.push(outCells.join(","));
     }
-    result.push(row);
-    if (ri % CHUNK === 0) {
-      onProgress(Math.min(99, Math.round((ri / total) * 100)));
-      await new Promise((r) => setTimeout(r, 0));
-    }
+
+    chunks.push(rowLines.join("\n") + "\n");
+    onProgress(Math.min(99, Math.round((end / total) * 100)));
+    await new Promise((r) => setTimeout(r, 0));
   }
 
   onProgress(100);
-  return result;
+  return new Blob(chunks, { type: "text/csv;charset=utf-8;" });
 }
 
-// ── Simple CSV parser (for decrypt file upload) ───────────────────────────────
-export function parseCSVText(text: string): { headers: string[]; rows: Record<string, string>[] } {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length === 0) return { headers: [], rows: [] };
-
-  const splitLine = (line: string): string[] => {
-    const cells: string[] = [];
-    let inQ = false, cur = "";
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') {
-        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
-        else inQ = !inQ;
-      } else if (c === "," && !inQ) {
-        cells.push(cur); cur = "";
-      } else cur += c;
-    }
-    cells.push(cur);
-    return cells;
-  };
-
-  const headers = splitLine(lines[0]);
-  const rows = lines.slice(1).filter((l) => l.trim()).map((line) => {
-    const cells = splitLine(line);
-    const row: Record<string, string> = {};
-    headers.forEach((h, i) => { row[h] = cells[i] ?? ""; });
-    return row;
-  });
-  return { headers, rows };
+// ── CSV header reader (first line only — for column selector UI) ──────────────
+export function readCSVHeaders(text: string): string[] {
+  const firstLine = text.slice(0, 8192).split(/\r?\n/).find((l) => l.trim().length > 0) ?? "";
+  return splitCSVLine(firstLine);
 }
