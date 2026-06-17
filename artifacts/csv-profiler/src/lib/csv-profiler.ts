@@ -71,9 +71,13 @@ const FRAME_VARS = new Set([
   "stratum", "substratum", "substratumno",
   "panel", "subsample", "subsmpl",
   "fodsubregion", "fodsubregionno", "fod",
+  // Common-ID block (auto-duplicated household identifier in Level 02+)
+  "commonid", "commonidentifier", "hhid", "householdid",
   // System-generated metadata
   "level", "questionnaireno", "questionnairenum",
   "multiplier", "weight", "wgt",
+  // FDQ generated field
+  "fdqoriginalmember", "fdqmember", "fdqoriginal",
 ]);
 
 function isFrameOrSystemVar(normalizedName: string): boolean {
@@ -115,43 +119,101 @@ export const HCES_QREF: Record<string, QRef> = {
   "reasonsubstitution":            { sec: "1", item: "1.14", col: "" },
   "reasonforsubcode":              { sec: "1", item: "1.14", col: "" },
 
-  // ── Level 02 — Section 3 (Household characteristics) ────────────────────
-  "religion":                      { sec: "3", item: "3.1",  col: "" },
-  "socialgroup":                   { sec: "3", item: "3.2",  col: "" },
-  "castecategory":                 { sec: "3", item: "3.2",  col: "" },
-  "householdsize":                 { sec: "3", item: "3.3",  col: "" },
-  "hhsize":                        { sec: "3", item: "3.3",  col: "" },
-  "nopersons":                     { sec: "3", item: "3.3",  col: "" },
-  "principalincomesource":         { sec: "3", item: "3.4",  col: "" },
-  "principalsourceofincome":       { sec: "3", item: "3.4",  col: "" },
-  "principalincome":               { sec: "3", item: "3.4",  col: "" },
-  "nhh":                           { sec: "3", item: "3.5",  col: "" },
-  "numberofhouseholds":            { sec: "3", item: "3.5",  col: "" },
-  "landpossession":                { sec: "3", item: "3.6",  col: "" },
-  "landpossessed":                 { sec: "3", item: "3.6",  col: "" },
-
-  // ── Level 03 — Section 4 (Demographic particulars) ───────────────────────
-  "memberserialno":                { sec: "4", item: "4.1",  col: "" },
-  "memberno":                      { sec: "4", item: "4.1",  col: "" },
-  "relation":                      { sec: "4", item: "4.2",  col: "" },
-  "relationtohh":                  { sec: "4", item: "4.2",  col: "" },
-  "relationtohead":                { sec: "4", item: "4.2",  col: "" },
-  "gender":                        { sec: "4", item: "4.3",  col: "" },
-  "sex":                           { sec: "4", item: "4.3",  col: "" },
-  "age":                           { sec: "4", item: "4.4",  col: "" },
-  "ageyears":                      { sec: "4", item: "4.4",  col: "" },
-  "maritalstatus":                 { sec: "4", item: "4.5",  col: "" },
-  "educationlevel":                { sec: "4", item: "4.6",  col: "" },
-  "generaleducation":              { sec: "4", item: "4.6",  col: "" },
-  "technicaltraining":             { sec: "4", item: "4.7",  col: "" },
-  "activitycode":                  { sec: "4", item: "4.8",  col: "" },
-  "principalactivity":             { sec: "4", item: "4.8",  col: "" },
-  "activitystatus":                { sec: "4", item: "4.8",  col: "" },
-  "industrycode":                  { sec: "4", item: "4.9",  col: "" },
-  "ncocode":                       { sec: "4", item: "4.10", col: "" },
-  "occupationcode":                { sec: "4", item: "4.10", col: "" },
-  "typeofjob":                     { sec: "4", item: "4.11", col: "" },
-  "employmentstatus":              { sec: "4", item: "4.11", col: "" },
+  // ── Level 02 — Section 3 (Individual member details) ────────────────────
+  // Col numbers match the Excel layout: Sec=3, Item=All
+  // Col 1: Person serial number
+  "personsrlno":                   { sec: "3", item: "All", col: "1" },
+  "personserialnum":               { sec: "3", item: "All", col: "1" },
+  "personserialno":                { sec: "3", item: "All", col: "1" },
+  "membersrlno":                   { sec: "3", item: "All", col: "1" },
+  "memberserialno":                { sec: "3", item: "All", col: "1" },
+  "srlno":                         { sec: "3", item: "All", col: "1" },
+  // Col 3: Relation to head
+  "relation":                      { sec: "3", item: "All", col: "3" },
+  "relationtohead":                { sec: "3", item: "All", col: "3" },
+  "relationtohh":                  { sec: "3", item: "All", col: "3" },
+  "relationcode":                  { sec: "3", item: "All", col: "3" },
+  "reltohead":                     { sec: "3", item: "All", col: "3" },
+  // Col 4: Gender
+  "gender":                        { sec: "3", item: "All", col: "4" },
+  "sex":                           { sec: "3", item: "All", col: "4" },
+  // Col 5: Age in years
+  "age":                           { sec: "3", item: "All", col: "5" },
+  "ageinyears":                    { sec: "3", item: "All", col: "5" },
+  "ageyears":                      { sec: "3", item: "All", col: "5" },
+  "ageinyr":                       { sec: "3", item: "All", col: "5" },
+  // Col 6: Marital status
+  "maritalstatus":                 { sec: "3", item: "All", col: "6" },
+  "maritalstatuscode":             { sec: "3", item: "All", col: "6" },
+  "maritalstatecode":              { sec: "3", item: "All", col: "6" },
+  // Col 7: Highest educational level attained
+  "educationallevel":              { sec: "3", item: "All", col: "7" },
+  "educationlevel":                { sec: "3", item: "All", col: "7" },
+  "highesteducationallevel":       { sec: "3", item: "All", col: "7" },
+  "highesteducationallevelattained": { sec: "3", item: "All", col: "7" },
+  "highesteducation":              { sec: "3", item: "All", col: "7" },
+  "educationcode":                 { sec: "3", item: "All", col: "7" },
+  "generaleducation":              { sec: "3", item: "All", col: "7" },
+  // Col 8: Total years of education completed
+  "totalyeareducation":            { sec: "3", item: "All", col: "8" },
+  "totalyearseducation":           { sec: "3", item: "All", col: "8" },
+  "totalyearofeducationcompleted": { sec: "3", item: "All", col: "8" },
+  "yearsofeduation":               { sec: "3", item: "All", col: "8" },
+  "educationyears":                { sec: "3", item: "All", col: "8" },
+  "totaleducationyears":           { sec: "3", item: "All", col: "8" },
+  "yearsofeducation":              { sec: "3", item: "All", col: "8" },
+  // Col 9: Internet use during last 30 days
+  "internetuse":                   { sec: "3", item: "All", col: "9" },
+  "whetherusedinternet":           { sec: "3", item: "All", col: "9" },
+  "internetaccess":                { sec: "3", item: "All", col: "9" },
+  "whetherinternetuse":            { sec: "3", item: "All", col: "9" },
+  "whetherusedinternatlast30days": { sec: "3", item: "All", col: "9" },
+  // Col 10: Days stayed away from home during last 30 days
+  "daysstayedaway":                { sec: "3", item: "All", col: "10" },
+  "noofdaysstayedaway":            { sec: "3", item: "All", col: "10" },
+  "daysawayfromhome":              { sec: "3", item: "All", col: "10" },
+  "noofdaysawayfromhome":          { sec: "3", item: "All", col: "10" },
+  "noofdaysstayedawayfromhomelast30days": { sec: "3", item: "All", col: "10" },
+  // Col 11: No. of meals usually taken in a day
+  "mealsperday":                   { sec: "3", item: "All", col: "11" },
+  "noofmealsperday":               { sec: "3", item: "All", col: "11" },
+  "mealsusually":                  { sec: "3", item: "All", col: "11" },
+  "noofmealsusually":              { sec: "3", item: "All", col: "11" },
+  "noofmealsusuallyinaday":        { sec: "3", item: "All", col: "11" },
+  "noofmealsusuallytakeninaday":   { sec: "3", item: "All", col: "11" },
+  // Col 12: Meals from school/balwadi during last 30 days
+  "mealsfromschool":               { sec: "3", item: "All", col: "12" },
+  "noofmealsfromschool":           { sec: "3", item: "All", col: "12" },
+  "mealsschoolbalwadi":            { sec: "3", item: "All", col: "12" },
+  "noofmealsfromschoolbalwadi":    { sec: "3", item: "All", col: "12" },
+  "noofmealstakenfromschoolbalwadietclast30days": { sec: "3", item: "All", col: "12" },
+  // Col blank: Meals from employer as perquisites (conditional — blank Col)
+  "mealsfromemployer":             { sec: "3", item: "All", col: "" },
+  "noofmealsfromemployer":         { sec: "3", item: "All", col: "" },
+  "mealsfromemployerasperquisites": { sec: "3", item: "All", col: "" },
+  "noofmealsfromeemployerasperquisitesorpartofwage": { sec: "3", item: "All", col: "" },
+  // Col 14: Meals from others during last 30 days
+  "mealsothers":                   { sec: "3", item: "All", col: "14" },
+  "noofmealsothers":               { sec: "3", item: "All", col: "14" },
+  "mealsfromothers":               { sec: "3", item: "All", col: "14" },
+  "noofmealsfromothers":           { sec: "3", item: "All", col: "14" },
+  "noofmealstakenduringlast30daysothers": { sec: "3", item: "All", col: "14" },
+  // Col 15: Meals on payment during last 30 days
+  "mealsonpayment":                { sec: "3", item: "All", col: "15" },
+  "noofmealsonpayment":            { sec: "3", item: "All", col: "15" },
+  "noofmealstakenonpayment":       { sec: "3", item: "All", col: "15" },
+  "noofmealstakenduringlast30daysonpayment": { sec: "3", item: "All", col: "15" },
+  // Col 16: Meals at home during last 30 days
+  "mealsathome":                   { sec: "3", item: "All", col: "16" },
+  "noofmealsathome":               { sec: "3", item: "All", col: "16" },
+  "noofmealstakenathome":          { sec: "3", item: "All", col: "16" },
+  "noofmealstakenduringlast30daysathome": { sec: "3", item: "All", col: "16" },
+  // Col 17: Status of member as on revisit
+  "statusonrevisit":               { sec: "3", item: "All", col: "17" },
+  "statusofrevisit":               { sec: "3", item: "All", col: "17" },
+  "statusofmemberonagrevisit":     { sec: "3", item: "All", col: "17" },
+  "statusmemberrevisit":           { sec: "3", item: "All", col: "17" },
+  "statusofmemberasonrevisit":     { sec: "3", item: "All", col: "17" },
 };
 
 /**
@@ -205,9 +267,20 @@ function isMultiplierColumn(name: string, isLast: boolean): boolean {
   return false;
 }
 
+// Returns true only for columns that are known household/FSU identifiers
+// (not general "serial" columns like Person_Srl_No)
 function isCommonIdColumn(name: string): boolean {
   const lower = name.toLowerCase().replace(/[_\-\s]/g, "");
-  return ["serial", "fsu", "ssu", "psu", "household", "hh"].some((kw) => lower.includes(kw));
+  // Must explicitly reference the FSU/sample-household composite key
+  return (
+    lower === "commonid" ||
+    lower === "commonidentifier" ||
+    lower === "hhid" ||
+    lower.startsWith("fsu") ||
+    lower.includes("samplehousehold") ||
+    lower.includes("samplehhld") ||
+    (lower.includes("ssu") && lower.includes("no"))
+  );
 }
 
 function inferRemarks(
@@ -220,6 +293,18 @@ function inferRemarks(
   totalCount: number,
   isLast: boolean
 ): string {
+  const norm = normalizeColName(name);
+
+  // Common-ID block → Auto-duplicated (Level 02+ household identifier)
+  if (norm === "commonid" || norm === "commonidentifier" || norm === "hhid") {
+    return "Auto-duplicated";
+  }
+
+  // FDQ original member field
+  if (norm.includes("fdqoriginalmember") || norm.includes("fdqmember") || norm === "fdqoriginal") {
+    return "Value '1' where the member is canvassed in FDQ";
+  }
+
   if (uniqueCount === 1 && nonNullValues.length > 0) {
     const val = topValues[0]?.value ?? "";
     return `'${val}' Generated`;
